@@ -1,0 +1,12 @@
+supabase>=2.3.4
+tensorflow>=2.15.0
+tensorflow-hub>=0.16.1
+transformers>=4.36.2
+torch>=2.1.2
+torchaudio>=2.1.2
+librosa>=0.10.2
+soundfile>=0.12.1
+numpy>=1.24.3
+requests>=2.31.0
+python-dotenv>=1.0.0
+

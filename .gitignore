@@ -39,3 +39,48 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+ENV/
+myenv/
+.venv/
+
+# ML models and cache
+*.pkl
+*.h5
+*.ckpt
+*.pt
+*.pth
+*.onnx
+.cache/
+.huggingface/
+*.tfhub/
+
+# jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+model/myenv/
