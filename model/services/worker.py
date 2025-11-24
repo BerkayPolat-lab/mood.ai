@@ -1,16 +1,9 @@
-"""
-Worker service for processing audio mood analysis jobs.
-Fetches queued jobs from Supabase, runs YAMNet and Wav2Vec2 inference,
-and updates job status and predictions.
-"""
-
 import os
 import time
 import tempfile
 import requests
 import numpy as np
 import librosa
-import soundfile as sf
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 from supabase import create_client, Client
@@ -19,13 +12,11 @@ import tensorflow_hub as hub
 from transformers import pipeline
 import torch
 
-# Suppress TensorFlow warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 tf.get_logger().setLevel('ERROR')
 
 
 class AudioMoodWorker:
-    """Worker for processing audio mood analysis jobs."""
     
     def __init__(self):
         """Initialize the worker with Supabase client and ML models."""
@@ -43,10 +34,8 @@ class AudioMoodWorker:
         self.yamnet_model = hub.load('https://tfhub.dev/google/yamnet/1')
         self.yamnet_class_names = self._load_yamnet_class_names()
         
-        # Initialize Wav2Vec2-based emotion model
         print("Loading Wav2Vec2 emotion model...")
         try:
-            # superb/hubert-base-superb-er is a Wav2Vec2-based model for emotion recognition
             self.emotion_classifier = pipeline(
                 "audio-classification",
                 model="superb/hubert-base-superb-er",
@@ -63,7 +52,6 @@ class AudioMoodWorker:
     def _load_yamnet_class_names(self) -> list:
         """Load YAMNet class names from GitHub (official source)."""
         try:
-            # Use raw GitHub URL to get the CSV file directly
             yamnet_class_map_url = "https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv"
             
             response = requests.get(yamnet_class_map_url, timeout=10)
@@ -115,13 +103,20 @@ class AudioMoodWorker:
                 "started_at": datetime.utcnow().isoformat()
             }).eq("id", job_id).execute()
             
-            # Download audio file using signed URL (most reliable method)
-            # Extract file path from stored URL
-            audio_file_path = upload["audio_file_path"]
-            print(f"Downloading audio from: {audio_file_path}")
+            stored_path = upload["audio_file_path"]
+            print(f"Downloading audio from path: {stored_path}")
             
-            # Generate signed URL and download
-            audio_data, sample_rate = self._download_audio_with_signed_url(audio_file_path)
+            if '/storage/v1/object/public/' in stored_path:
+                parts = stored_path.split('/storage/v1/object/public/')
+                if len(parts) == 2:
+                    bucket_and_path = parts[1]
+                    file_path = '/'.join(bucket_and_path.split('/')[1:])
+                else:
+                    raise Exception(f"Could not extract file path from URL: {stored_path}")
+            else:
+                file_path = stored_path
+            
+            audio_data, sample_rate = self._download_audio_with_signed_url(file_path)
             
             if audio_data is None:
                 raise Exception("Failed to download or load audio file")
@@ -173,61 +168,40 @@ class AudioMoodWorker:
                 "error": str(e)
             }
     
-    def _download_audio_with_signed_url(self, file_path_or_url: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
-        """
-        Download audio file using a signed URL (most reliable method).
-        
-        Signed URLs are better than public URLs because:
-        1. They work regardless of bucket privacy settings
-        2. They're more reliable (avoid 400 errors from public URL encoding issues)
-        3. They're time-limited for security
-        4. They work with nested paths without encoding issues
-        
-        Args:
-            file_path_or_url: Either a file path (user_id/filename) or full public URL
-            
-        Returns:
-            Tuple of (audio_data, sample_rate) or (None, None) on error
-        """
-        bucket = "audio_files"
+    def _download_audio_with_signed_url(self, file_path: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
         try:
-            if '/storage/v1/object/public/' in file_path_or_url:
-                # Extract path from public URL
-                # Format: https://project.supabase.co/storage/v1/object/public/bucket/path
-                parts = file_path_or_url.split('/storage/v1/object/public/')
-                if len(parts) == 2:
-                    bucket_and_path = parts[1]
-                    bucket = bucket_and_path.split('/')[0]
-                    file_path = '/'.join(bucket_and_path.split('/')[1:])
-                else:
+            try:
+                signed_urls_response = self.supabase.storage.from_("audio_files").create_signed_urls([file_path], expires_in=3600)
+                
+                if not signed_urls_response or len(signed_urls_response) == 0:
+                    print(f"Failed to generate signed URL for: {file_path}")
                     return None, None
-            else:
-                # Assume it's already a file path
-                file_path = file_path_or_url
+                
+                signed_url_data = signed_urls_response[0]
+                signed_url = signed_url_data.get('signedURL') or signed_url_data.get('signed_url')
+                
+                if not signed_url:
+                    print(f"No signed URL in response: {signed_url_data}")
+                    return None, None
+                
+                print(f"Generated signed URL (expires in 1 hour)")
+                
+            except Exception as e:
+                print(f"Error generating signed URL: {str(e)}")
             
-            # Use direct download (more reliable than signed URLs for server-side)
-            # Signed URLs are better for client-side, but direct download works better
-            # for server-side workers with service role key
-            return self._download_audio_direct(bucket, file_path)
-            
-            # Download using signed URL
             response = requests.get(signed_url, timeout=30)
             response.raise_for_status()
             
-            # Determine file extension from path
             file_ext = file_path.split('.')[-1].lower() if '.' in file_path else 'wav'
             if file_ext not in ['wav', 'mp3', 'm4a', 'ogg', 'webm']:
                 file_ext = 'wav'
             
-            # Save to temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_ext}') as tmp_file:
                 tmp_file.write(response.content)
                 tmp_path = tmp_file.name
             
-            # Load audio using librosa
             audio_data, sample_rate = librosa.load(tmp_path, sr=16000, duration=30)
             
-            # Clean up
             os.unlink(tmp_path)
             
             return audio_data, sample_rate
@@ -235,89 +209,7 @@ class AudioMoodWorker:
         except Exception as e:
             print(f"Error downloading with signed URL: {str(e)}")
             return None, None
-    
-    def _download_audio_direct(self, bucket: str, file_path: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
-        """
-        Fallback: Download audio file directly using Storage API.
         
-        Args:
-            bucket: Storage bucket name
-            file_path: Path to the file in the bucket
-            
-        Returns:
-            Tuple of (audio_data, sample_rate) or (None, None) on error
-        """
-        try:
-            # Download directly using Storage API
-            file_response = self.supabase.storage.from(bucket).download(file_path)
-            
-            if not file_response:
-                return None, None
-            
-            # Determine file extension from path
-            file_ext = file_path.split('.')[-1].lower() if '.' in file_path else 'wav'
-            if file_ext not in ['wav', 'mp3', 'm4a', 'ogg', 'webm']:
-                file_ext = 'wav'
-            
-            # Save to temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_ext}') as tmp_file:
-                tmp_file.write(file_response)
-                tmp_path = tmp_file.name
-            
-            # Load audio using librosa
-            audio_data, sample_rate = librosa.load(tmp_path, sr=16000, duration=30)
-            
-            # Clean up
-            os.unlink(tmp_path)
-            
-            return audio_data, sample_rate
-            
-        except Exception as e:
-            print(f"Error downloading directly: {str(e)}")
-            return None, None
-    
-    def _download_and_load_audio(self, url: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
-        """
-        Download audio file and load it using librosa.
-        
-        Args:
-            url: URL of the audio file (public Supabase Storage URL)
-            
-        Returns:
-            Tuple of (audio_data, sample_rate) or (None, None) on error
-        """
-        try:
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()  # Raises exception if HTTP error
-            
-            # Determine file extension from URL
-            file_ext = url.split('.')[-1].lower() if '.' in url else 'wav'
-            if file_ext not in ['wav', 'mp3', 'm4a', 'ogg', 'webm']:
-                file_ext = 'wav'  # Default fallback
-            
-            # Save to temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_ext}') as tmp_file:
-                tmp_file.write(response.content) 
-                tmp_path = tmp_file.name  
-            
-            # Load audio using librosa (resamples to 16kHz for YAMNet)
-            audio_data, sample_rate = librosa.load(tmp_path, sr=16000, duration=30)
-            
-            # Clean up temporary file
-            os.unlink(tmp_path)
-            
-            return audio_data, sample_rate
-            
-        except requests.exceptions.HTTPError as e:
-            print(f"HTTP error downloading audio: {e}")
-            print(f"URL: {url}")
-            print(f"Status code: {e.response.status_code if hasattr(e, 'response') else 'unknown'}")
-            return None, None
-        except Exception as e:
-            print(f"Error downloading/loading audio: {str(e)}")
-            print(f"URL: {url}")
-            return None, None
-    
     def _run_yamnet(self, audio_data: np.ndarray, sample_rate: int) -> Dict[str, Any]:
         """
         Run YAMNet inference for sound classification.
@@ -381,13 +273,10 @@ class AudioMoodWorker:
             if self.emotion_classifier is None:
                 raise Exception("Emotion classifier not initialized")
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
-                sf.write(tmp_file.name, audio_data, sample_rate)
-                tmp_path = tmp_file.name
-            
-            results = self.emotion_classifier(tmp_path)
-            
-            os.unlink(tmp_path)
+            results = self.emotion_classifier({
+                "sampling_rate": sample_rate,
+                "raw": audio_data
+            })
             
             if isinstance(results, list) and len(results) > 0:
                 top_emotion = results[0]
