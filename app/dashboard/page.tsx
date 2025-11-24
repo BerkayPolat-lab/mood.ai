@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import AudioUpload from "@/app/components/AudioUpload";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
@@ -72,14 +73,10 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="text-[#9CA3AF] mb-8">
-            Welcome! Audio upload functionality will be available here soon.
+            Upload audio clips to analyze mood, emotion, and energy levels.
           </p>
 
-          <div className="bg-[#1F2937] rounded-xl p-8 border border-[#1F2937]">
-            <p className="text-[#9CA3AF] text-center">
-              Audio upload and analysis features coming soon...
-            </p>
-          </div>
+          <AudioUpload />
         </div>
       </main>
     </div>
