@@ -63,3 +63,41 @@ CREATE INDEX IF NOT EXISTS idx_predictions_model_name ON predictions(model_name)
 --   "confidence": 0.91
 -- }
 
+-- Playlists table
+-- Stores Spotify playlist recommendations associated with audio uploads
+CREATE TABLE IF NOT EXISTS playlists (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    upload_id UUID NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+    spotify_playlist_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    owner JSONB NOT NULL,
+    images JSONB NOT NULL,
+    link TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes on playlists table
+CREATE INDEX IF NOT EXISTS idx_playlists_upload_id ON playlists(upload_id);
+CREATE INDEX IF NOT EXISTS idx_playlists_spotify_id ON playlists(spotify_playlist_id);
+CREATE INDEX IF NOT EXISTS idx_playlists_created_at ON playlists(created_at);
+
+-- Example JSON structure for owner column:
+-- {
+--   "display_name": "John Doe",
+--   "id": "user123",
+--   "external_urls": {"spotify": "https://open.spotify.com/user/user123"},
+--   "href": "https://api.spotify.com/v1/users/user123",
+--   "type": "user",
+--   "uri": "spotify:user:user123"
+-- }
+
+-- Example JSON structure for images column:
+-- [
+--   {
+--     "url": "https://i.scdn.co/image/...",
+--     "height": 300,
+--     "width": 300
+--   }
+-- ]
+
