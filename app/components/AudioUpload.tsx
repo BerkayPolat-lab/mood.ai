@@ -3,7 +3,11 @@
 import { useState, useRef } from "react";
 import { uploadAudioFile } from "@/app/actions/upload";
 
-export default function AudioUpload() {
+interface AudioUploadProps {
+  onUploadSuccess?: () => void;
+}
+
+export default function AudioUpload({ onUploadSuccess }: AudioUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +100,11 @@ export default function AudioUpload() {
         if (audioRef.current) {
           URL.revokeObjectURL(audioRef.current.src);
           audioRef.current = null;
+        }
+        
+        // Call success callback if provided
+        if (onUploadSuccess) {
+          onUploadSuccess();
         }
       } else {
         setError(result.error || "Upload failed");
