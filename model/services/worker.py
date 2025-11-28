@@ -9,8 +9,8 @@ from datetime import datetime
 from supabase import create_client, Client
 import tensorflow as tf
 import tensorflow_hub as hub
-from transformers import pipeline
 import torch
+from .emotion_classifier import create_emotion_classifier
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 tf.get_logger().setLevel('ERROR')
@@ -34,16 +34,13 @@ class AudioMoodWorker:
         self.yamnet_model = hub.load('https://tfhub.dev/google/yamnet/1')
         self.yamnet_class_names = self._load_yamnet_class_names()
         
-        print("Loading Wav2Vec2 emotion model...")
+        print("Loading custom emotion classifier with 100 emotions...")
         try:
-            self.emotion_classifier = pipeline(
-                "audio-classification",
-                model="superb/hubert-base-superb-er",
-                device=0 if torch.cuda.is_available() else -1
-            )
-            print("Wav2Vec2 emotion model loaded successfully")
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.emotion_classifier = create_emotion_classifier(device=device)
+            print("Custom emotion classifier loaded successfully")
         except Exception as e:
-            print(f"Warning: Could not load Wav2Vec2 emotion model: {e}")
+            print(f"Warning: Could not load custom emotion classifier: {e}")
             print("Falling back to feature-based emotion estimation")
             self.emotion_classifier = None
         
@@ -260,7 +257,7 @@ class AudioMoodWorker:
     
     def _run_emotion_detection(self, audio_data: np.ndarray, sample_rate: int) -> Dict[str, Any]:
         """
-        Run emotion detection using Wav2Vec2-based model.
+        Run emotion detection using custom HuBERT-based model with 100 emotions.
         
         Args:
             audio_data: Audio waveform data
@@ -273,22 +270,12 @@ class AudioMoodWorker:
             if self.emotion_classifier is None:
                 raise Exception("Emotion classifier not initialized")
             
-            results = self.emotion_classifier({
-                "sampling_rate": sample_rate,
-                "raw": audio_data
-            })
-            
-            if isinstance(results, list) and len(results) > 0:
-                top_emotion = results[0]
-                emotion_label = top_emotion.get("label", "neutral")
-                emotion_score = top_emotion.get("score", 0.0)
-            else:
-                emotion_label = "neutral"
-                emotion_score = 0.5
+            # Use the predict method which returns the same format
+            result = self.emotion_classifier.predict(audio_data, sample_rate)
             
             return {
-                "emotion": emotion_label,
-                "emotion_score": float(emotion_score)
+                "emotion": result.get("emotion", "neutral"),
+                "emotion_score": float(result.get("emotion_score", 0.5))
             }
             
         except Exception as e:
