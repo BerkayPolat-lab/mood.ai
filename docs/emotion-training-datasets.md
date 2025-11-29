@@ -87,11 +87,6 @@ Example: `03-01-03-02-01-01-01.wav`
    unzip ravdess-emotional-speech-audio.zip
    ```
 
-2. **Direct Download**:
-   - Visit: https://www.kaggle.com/datasets/uwrfkaggler/ravdess-emotional-speech-audio
-   - Click "Download" button
-   - Extract the ZIP file
-
 ### Data Preparation
 
 The dataset comes organized in folders. You'll need to:
