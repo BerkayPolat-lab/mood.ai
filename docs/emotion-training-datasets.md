@@ -98,27 +98,6 @@ The dataset comes organized in folders. You'll need to:
 
 ---
 
-## Alternative: EmoGator (If You Want More Emotions)
-
-If you prefer more emotion categories, **EmoGator** is a good alternative:
-
-- **Size**: 32,130 samples (larger)
-- **Emotions**: 30 categories (more fine-grained)
-- **Format**: Vocal bursts (non-verbal)
-- **License**: Open-source
-- **Access**: HuggingFace Datasets or research paper
-
-**Trade-offs:**
-- ✅ More emotions (30 vs 8)
-- ✅ Larger dataset
-- ❌ Less established/validated
-- ❌ May be harder to access/format
-- ❌ Vocal bursts (non-verbal) vs speech
-
-**Recommendation**: Stick with RAVDESS unless you specifically need 30 emotions.
-
----
-
 ## Recommended Training Approach
 
 ### 1. Dataset-Specific Configuration
@@ -182,15 +161,3 @@ With RAVDESS and HuBERT:
 4. **Create training script** with proper data splits
 5. **Train classifier head** (frozen HuBERT base)
 6. **Evaluate** on test set
-
----
-
-## Next Steps
-
-After choosing RAVDESS:
-- The classifier will automatically use 8 emotions
-- No need for emotion mapping
-- Simpler training pipeline
-- Faster iteration and experimentation
-
----
