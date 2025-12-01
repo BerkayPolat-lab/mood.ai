@@ -1,34 +1,55 @@
 """
-Custom emotion classifier with 100 emotions.
-Replaces the classification layer of HuBERT base model.
+Custom emotion classifier using fine-tuned HuBERT model from Hugging Face.
 """
 
+import os
 import torch
 import torch.nn as nn
 from transformers import (AutoModelForAudioClassification, AutoFeatureExtractor, AutoConfig)
 from typing import Dict, Any, List, Tuple
 import numpy as np
-
-from ..emotions import EMOTIONS, get_num_emotions, IDX_TO_EMOTION
+from huggingface_hub import login
 
 
 class CustomEmotionClassifier:
     """
-    Custom emotion classifier that uses HuBERT base with 100 emotion labels.
+    Custom emotion classifier using fine-tuned HuBERT model from Hugging Face.
     """
     
-    def __init__(self, base_model_name: str = "superb/hubert-base-superb-er", num_emotions: int = None, device: str = None):
+    # Emotion index mapping: model output (1-8) -> array index (0-7)
+    EMOTION_MAPPING = {
+        1: 0,  # neutral
+        2: 1,  # calm
+        3: 2,  # happy
+        4: 3,  # sad
+        5: 4,  # angry
+        6: 5,  # fearful
+        7: 6,  # surprise
+        8: 7   # disgust
+    }
+    
+    # Index to emotion name mapping (0-7)
+    INDEX_TO_EMOTION = {
+        0: "neutral",
+        1: "calm",
+        2: "happy",
+        3: "sad",
+        4: "angry",
+        5: "fearful",
+        6: "surprise",
+        7: "disgust"
+    }
+    
+    def __init__(self, model_name: str = "BerkayPolat/hubert_ravdess_emotion", hf_token: str = None, device: str = None):
         """
-        Initialize custom emotion classifier.
+        Initialize custom emotion classifier with fine-tuned model.
         
         Args:
-            base_model_name: HuggingFace model name to use as base
-            num_emotions: Number of emotion classes (defaults to 100 from emotions.py)
+            model_name: HuggingFace model repository name
+            hf_token: Hugging Face access token (if None, tries to get from HF_ACCESS_TOKEN env var)
             device: Device to run on ('cuda', 'cpu', or None for auto)
         """
-        self.base_model_name = base_model_name
-        self.num_emotions = num_emotions or get_num_emotions()
-        self.emotions = EMOTIONS
+        self.model_name = model_name
         
         # Auto-detect device if not provided
         if device is None:
@@ -36,55 +57,69 @@ class CustomEmotionClassifier:
         else:
             self.device = device
         
-        print(f"Loading base model: {base_model_name}")
+        # Get HF token from parameter or environment
+        if hf_token is None:
+            hf_token = os.getenv("HF_ACCESS_TOKEN")
+        
+        if not hf_token:
+            raise ValueError(
+                "HF_ACCESS_TOKEN must be set in environment or passed as parameter. "
+                "Get your token from https://huggingface.co/settings/tokens"
+            )
+        
+        # Login to Hugging Face with token
+        try:
+            login(token=hf_token, add_to_git_credential=False)
+            print("Authenticated with Hugging Face")
+        except Exception as e:
+            print(f"Warning: Could not login to Hugging Face: {e}")
+            print("Trying to load model with token in headers...")
+        
+        print(f"Loading fine-tuned model: {model_name}")
         print(f"Using device: {self.device}")
-        print(f"Number of emotions: {self.num_emotions}")
-        
-        self.feature_extractor = AutoFeatureExtractor.from_pretrained(base_model_name, trust_remote_code=True)
-        
-        self.config = AutoConfig.from_pretrained(base_model_name, trust_remote_code=True)
-        
-        original_num_labels = getattr(self.config, 'num_labels', None)
-        self.config.num_labels = self.num_emotions
-        
-        print(f"Original num_labels: {original_num_labels}, New num_labels: {self.num_emotions}")
         
         try:
-            base_model = AutoModelForAudioClassification.from_pretrained(base_model_name, config=self.config, trust_remote_code=True, ignore_mismatched_sizes=True  )
+            # Load feature extractor
+            self.feature_extractor = AutoFeatureExtractor.from_pretrained(
+                model_name,
+                token=hf_token,
+                trust_remote_code=True
+            )
             
-            hidden_size = getattr(self.config, 'hidden_size', 768)
+            # Load config to get number of labels
+            self.config = AutoConfig.from_pretrained(
+                model_name,
+                token=hf_token,
+                trust_remote_code=True
+            )
             
-            if hasattr(base_model, 'classifier'):
-                original_classifier = base_model.classifier
-                if isinstance(original_classifier, nn.Linear):
-                    hidden_size = original_classifier.in_features
-                elif isinstance(original_classifier, nn.Sequential):
-                    for layer in reversed(original_classifier):
-                        if isinstance(layer, nn.Linear):
-                            hidden_size = layer.in_features
-                            break
-            elif hasattr(base_model, 'projector') and hasattr(base_model.projector, 'out_features'):
-                hidden_size = base_model.projector.out_features
-            elif hasattr(base_model, 'hubert'):
-                hidden_size = getattr(base_model.hubert.config, 'hidden_size', hidden_size)
+            # Get number of emotion classes from config
+            self.num_emotions = getattr(self.config, 'num_labels', None)
+            if self.num_emotions is None:
+                # Try to infer from id2label
+                if hasattr(self.config, 'id2label') and self.config.id2label:
+                    self.num_emotions = len(self.config.id2label)
+                else:
+                    print("Warning: Could not determine number of emotions, defaulting to 8")
+                    self.num_emotions = 8
             
-            print(f"Detected hidden size: {hidden_size}")
+            print(f"Number of emotion classes: {self.num_emotions}")
             
-            new_classifier = nn.Linear(hidden_size, self.num_emotions)
+            # Load the fine-tuned model (already has correct classification head)
+            self.model = AutoModelForAudioClassification.from_pretrained(
+                model_name,
+                token=hf_token,
+                trust_remote_code=True
+            )
             
-            if hasattr(base_model, 'classification_head'):
-                base_model.classification_head = new_classifier
-            else:
-                base_model.classifier = new_classifier
+            self.model = self.model.to(self.device)
+            self.model.eval()
             
-            self.model = base_model.to(self.device)
-            self.model.eval() 
-            
-            print("Model loaded and classification head replaced successfully")
-            print(f"New classifier output size: {self.num_emotions}")
+            print(f"Fine-tuned model loaded successfully on {self.device}")
+            print(f"Model has {self.num_emotions} emotion classes")
             
         except Exception as e:
-            print(f"Error loading model: {e}")
+            print(f"Error loading fine-tuned model: {e}")
             print(f"Error details: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
@@ -128,12 +163,25 @@ class CustomEmotionClassifier:
             
             probs = probs.cpu().numpy().flatten()
             
-            top_indices = np.argsort(probs)[::-1][:5]
+            # Map model outputs to emotion indices
+            # Model outputs are 0-indexed (0-7), but model labels are 1-8
+            # So probs[0] corresponds to model label 1, probs[1] to model label 2, etc.
+            mapped_probs = np.zeros(8)
+            for model_output_idx in range(len(probs)):
+                # model_output_idx is 0-7, model label is model_output_idx + 1 (1-8)
+                model_label = model_output_idx + 1
+                if model_label in self.EMOTION_MAPPING:
+                    emotion_idx = self.EMOTION_MAPPING[model_label]
+                    mapped_probs[emotion_idx] = probs[model_output_idx]
+            
+            # Get top 5 emotions by probability
+            top_indices = np.argsort(mapped_probs)[::-1][:5]
             
             results = []
-            for idx in top_indices:
-                emotion = IDX_TO_EMOTION.get(int(idx), f"emotion_{idx}")
-                score = float(probs[idx])
+            for emotion_idx in top_indices:
+                # Get emotion name from mapped index
+                emotion = self.INDEX_TO_EMOTION.get(int(emotion_idx), f"emotion_{emotion_idx}")
+                score = float(mapped_probs[emotion_idx])
                 results.append({
                     "label": emotion,
                     "score": score
@@ -174,15 +222,17 @@ class CustomEmotionClassifier:
             }
 
 
-def create_emotion_classifier(device: str = None) -> CustomEmotionClassifier:
+def create_emotion_classifier(model_name: str = "BerkayPolat/hubert_ravdess_emotion", hf_token: str = None, device: str = None) -> CustomEmotionClassifier:
     """
-    Factory function to create a custom emotion classifier.
+    Factory function to create a custom emotion classifier with fine-tuned model.
     
     Args:
+        model_name: HuggingFace model repository name
+        hf_token: Hugging Face access token (if None, tries to get from HF_ACCESS_TOKEN env var)
         device: Device to run on ('cuda', 'cpu', or None for auto)
         
     Returns:
         CustomEmotionClassifier instance
     """
-    return CustomEmotionClassifier(device=device)
+    return CustomEmotionClassifier(model_name=model_name, hf_token=hf_token, device=device)
 

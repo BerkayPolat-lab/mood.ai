@@ -34,15 +34,27 @@ class AudioMoodWorker:
         self.yamnet_model = hub.load('https://tfhub.dev/google/yamnet/1')
         self.yamnet_class_names = self._load_yamnet_class_names()
         
-        print("Loading custom emotion classifier with 100 emotions...")
+        print("Loading fine-tuned HuBERT emotion classifier...")
         try:
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.emotion_classifier = create_emotion_classifier(device=device)
-            print("Custom emotion classifier loaded successfully")
+            hf_token = os.getenv("HF_ACCESS_TOKEN")
+            
+            if not hf_token:
+                raise ValueError(
+                    "HF_ACCESS_TOKEN must be set in model/.env.local. "
+                    "Get your token from https://huggingface.co/settings/tokens"
+                )
+            
+            self.emotion_classifier = create_emotion_classifier(
+                model_name="BerkayPolat/hubert_ravdess_emotion",
+                hf_token=hf_token,
+                device=device
+            )
+            print("Fine-tuned emotion classifier loaded successfully")
         except Exception as e:
-            print(f"Warning: Could not load custom emotion classifier: {e}")
-            print("Falling back to feature-based emotion estimation")
-            self.emotion_classifier = None
+            print(f"Error: Could not load fine-tuned emotion classifier: {e}")
+            print("Worker cannot proceed without emotion classifier")
+            raise
         
         print("Worker initialized successfully")
     
