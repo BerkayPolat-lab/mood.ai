@@ -95,7 +95,7 @@ python services/worker.py
 python3 -m services.worker
 ```
 
-9. Open [http://localhost:3000](http://localhost:3000) in your browser.
+9. Open [http://localhost:3000](http://localhost:3000) in your browser or check out the website [mood-ai-gamma.vercel.app](mood-ai-gamma.vercel.app)
 
 ## Video Links
 
@@ -154,12 +154,6 @@ disgust            0      0      2     0      4        4         0       70
 - **Trainable Parameters**: 728,341 / 94,704,277 (0.77%)
 - **Split**: Speaker-independent (16 actors train, 3 actors validation, 5 actors test)
 - **Best Validation Accuracy**: 61.67% (achieved at epoch 13 with early stopping)
-
-## Learn More
-
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Supabase Documentation](https://supabase.com/docs)
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
 
 ## Color Palette
 
