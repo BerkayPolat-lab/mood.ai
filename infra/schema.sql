@@ -1,5 +1,37 @@
 -- mood.ai Database Schema
 
+-- ## Database Schema
+
+-- The application uses three main tables:
+
+-- ### uploads
+-- - `id` (UUID) - Primary key
+-- - `audio_file_path` (TEXT) - Path to uploaded audio file
+-- - `file_size` (BIGINT) - Size of the file in bytes
+-- - `user_id_sha256` (TEXT) - SHA256 hash of user ID
+-- - `created_at` (TIMESTAMP) - Upload timestamp
+
+-- ### jobs
+-- - `id` (UUID) - Primary key
+-- - `upload_id` (UUID) - Foreign key to uploads table
+-- - `user_id_sha256` (TEXT) - SHA256 hash of user ID
+-- - `status` (TEXT) - Job status: 'queued', 'processing', 'completed', 'failed'
+-- - `error` (TEXT) - Error message if job failed
+-- - `started_at` (TIMESTAMP) - Job start time
+-- - `finished_at` (TIMESTAMP) - Job completion time
+-- - `created_at` (TIMESTAMP) - Job creation timestamp
+
+-- ### predictions
+-- - `id` (UUID) - Primary key
+-- - `user_id_sha256` (TEXT) - SHA256 hash of user ID
+-- - `upload_id` (UUID) - Foreign key to uploads table
+-- - `scores` (JSONB) - ML pipeline output (mood, emotion, energy_level, confidence)
+-- - `model_version` (TEXT) - Version of the ML model used
+-- - `inference_time` (FLOAT) - Time taken for inference
+-- - `model_name` (TEXT) - Name of the ML model
+-- - `created_at` (TIMESTAMP) - Prediction timestamp
+
+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
