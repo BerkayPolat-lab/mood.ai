@@ -99,7 +99,9 @@ python3 -m services.worker
 
 ## Video Links
 
-👹Complete when the demo and technical walkthrough is recorded.
+- [Demo Video](./videos/demo.mp4)
+
+- [Technical Walkthrough Video](./videos/technical_walkthrough.mp4)
 
 
 ## Evaluation
