@@ -99,7 +99,7 @@ python3 -m services.worker
 
 ## Video Links
 
-- [Demo Video](./videos/demo.mp4)
+- [Demo Video](https://drive.google.com/file/d/1n8rCimcP1ZAZpTdTp3FrMnd955M5NN6D/view?usp=sharing)
 
 - [Technical Walkthrough Video](./videos/technical_walkthrough.mp4)
 
